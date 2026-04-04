@@ -128,7 +128,7 @@
 
     <div class="stack">
       <section class="card">
-        <p><code>site/config.js</code> の API URL を Render の URL に変えてから使ってください。</p>
+        <p id="api-target"></p>
         <input id="file" type="file" accept=".wav,.mp3,.flac,.ogg,.m4a,.aif,.aiff,.mid,.midi">
         <button id="analyze">Analyze</button>
         <div id="status" class="status"></div>
@@ -156,6 +156,7 @@
     const summaryText = document.getElementById("summary-text");
     const metricsEl = document.getElementById("metrics");
     const rawEl = document.getElementById("raw");
+    const apiTargetEl = document.getElementById("api-target");
 
     const metricKeys = [
       "groove_score",
@@ -172,10 +173,26 @@
       return typeof value === "number" ? value.toFixed(4) : String(value);
     }
 
+    async function fetchWithTimeout(url, options, timeoutMs) {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, { ...options, signal: controller.signal });
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    }
+
+    if (!apiBase || apiBase.includes("YOUR-RENDER-SERVICE")) {
+      apiTargetEl.textContent = "API URL が未設定です。";
+    } else {
+      apiTargetEl.textContent = `接続先 API: ${apiBase}`;
+    }
+
     analyzeButton.addEventListener("click", async () => {
       const file = fileInput.files[0];
       if (!apiBase || apiBase.includes("YOUR-RENDER-SERVICE")) {
-        statusEl.textContent = "先に site/config.js の API URL を設定してください。";
+        statusEl.textContent = "API URL が未設定です。";
         return;
       }
       if (!file) {
@@ -189,10 +206,11 @@
       analyzeButton.disabled = true;
       summaryCard.hidden = true;
       rawCard.hidden = true;
-      statusEl.textContent = "解析中です。";
+      statusEl.textContent = "解析中です。初回は Render の起動で 30-60 秒ほどかかることがあります。";
 
       try {
-        const response = await fetch(`${apiBase}/api/analyze`, { method: "POST", body });
+        await fetchWithTimeout(`${apiBase}/api/health`, { method: "GET" }, 90000);
+        const response = await fetchWithTimeout(`${apiBase}/api/analyze`, { method: "POST", body }, 90000);
         const payload = await response.json();
         if (!response.ok) {
           throw new Error(payload.detail || "解析に失敗しました。");
@@ -211,7 +229,11 @@
         rawCard.hidden = false;
         statusEl.textContent = "解析が完了しました。";
       } catch (error) {
-        statusEl.textContent = error.message;
+        if (error.name === "AbortError") {
+          statusEl.textContent = "応答待ちが長すぎたため中断しました。数十秒おいてもう一度試してください。";
+        } else {
+          statusEl.textContent = error.message;
+        }
       } finally {
         analyzeButton.disabled = false;
       }
