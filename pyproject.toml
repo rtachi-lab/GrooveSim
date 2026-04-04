@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "groovesim"
+version = "0.1.0"
+description = "Research prototype for estimating musical grooveness from audio or onset sequences."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "librosa>=0.10",
+  "soundfile>=0.12",
+  "pretty_midi>=0.2.11",
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "python-multipart>=0.0.9",
+]
+
+[project.scripts]
+groovesim = "groovesim.cli:main"
+groovesim-web = "groovesim.webapp:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

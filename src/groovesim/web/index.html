@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GrooveSim Web</title>
+  <style>
+    :root {
+      --bg: #f3efe6;
+      --panel: rgba(255, 252, 245, 0.9);
+      --ink: #1c1917;
+      --accent: #b3472f;
+      --accent-2: #215f5c;
+      --line: rgba(28, 25, 23, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(179, 71, 47, 0.16), transparent 30%),
+        radial-gradient(circle at bottom right, rgba(33, 95, 92, 0.18), transparent 28%),
+        linear-gradient(135deg, #f7f1e4, #ece5d8);
+      min-height: 100vh;
+    }
+    main {
+      width: min(960px, calc(100vw - 32px));
+      margin: 32px auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: 0 24px 60px rgba(28, 25, 23, 0.12);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(2rem, 4vw, 3.4rem);
+      line-height: 0.95;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+    p {
+      margin: 0;
+      line-height: 1.6;
+    }
+    .lede {
+      max-width: 62ch;
+      color: rgba(28, 25, 23, 0.78);
+      margin-bottom: 24px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.72);
+      border-radius: 20px;
+      padding: 20px;
+      margin-top: 20px;
+    }
+    .upload {
+      display: grid;
+      gap: 14px;
+    }
+    .upload input[type="file"] {
+      padding: 16px;
+      border-radius: 16px;
+      border: 1px dashed var(--accent-2);
+      background: rgba(33, 95, 92, 0.05);
+    }
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      padding: 14px 20px;
+      color: white;
+      background: linear-gradient(135deg, var(--accent), #d76b43);
+      font: inherit;
+      cursor: pointer;
+      width: fit-content;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+    .status {
+      min-height: 24px;
+      color: rgba(28, 25, 23, 0.72);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.8);
+    }
+    .metric strong {
+      display: block;
+      font-size: 1.4rem;
+      margin-top: 8px;
+    }
+    pre {
+      margin: 0;
+      padding: 16px;
+      border-radius: 16px;
+      overflow: auto;
+      background: #18181b;
+      color: #f8fafc;
+      font-size: 0.92rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>GrooveSim Web</h1>
+    <p class="lede">音声ファイルや MIDI をブラウザから送ると、サーバー上で一時的にメモリ内だけで解析して、groove score を返します。アップロードされたファイルは保存しません。</p>
+
+    <section class="card upload">
+      <label for="file">対応形式: WAV / MP3 / FLAC / OGG / M4A / AIFF / MID / MIDI</label>
+      <input id="file" type="file" accept=".wav,.mp3,.flac,.ogg,.m4a,.aif,.aiff,.mid,.midi">
+      <button id="analyze">Analyze</button>
+      <div id="status" class="status"></div>
+    </section>
+
+    <section class="card" id="summary" hidden>
+      <p id="summary-text"></p>
+      <div class="grid" id="metrics"></div>
+    </section>
+
+    <section class="card" id="raw-card" hidden>
+      <pre id="raw"></pre>
+    </section>
+  </main>
+
+  <script>
+    const fileInput = document.getElementById("file");
+    const analyzeButton = document.getElementById("analyze");
+    const statusEl = document.getElementById("status");
+    const summaryCard = document.getElementById("summary");
+    const rawCard = document.getElementById("raw-card");
+    const summaryText = document.getElementById("summary-text");
+    const metricsEl = document.getElementById("metrics");
+    const rawEl = document.getElementById("raw");
+
+    const metricKeys = [
+      "groove_score",
+      "tempo_bpm",
+      "beat_strength",
+      "beat_clarity",
+      "syncopation_index",
+      "mean_surprisal",
+      "moderate_surprisal_ratio",
+      "confidence"
+    ];
+
+    function formatValue(value) {
+      return typeof value === "number" ? value.toFixed(4) : String(value);
+    }
+
+    analyzeButton.addEventListener("click", async () => {
+      const file = fileInput.files[0];
+      if (!file) {
+        statusEl.textContent = "ファイルを選んでください。";
+        return;
+      }
+
+      const body = new FormData();
+      body.append("file", file);
+
+      analyzeButton.disabled = true;
+      statusEl.textContent = "解析中です。サーバーには保存せず、このリクエスト内だけで処理します。";
+      summaryCard.hidden = true;
+      rawCard.hidden = true;
+
+      try {
+        const response = await fetch("/api/analyze", { method: "POST", body });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || "解析に失敗しました。");
+        }
+
+        summaryText.textContent = `${payload.filename} の解析結果です。`;
+        metricsEl.innerHTML = "";
+        for (const key of metricKeys) {
+          const item = document.createElement("div");
+          item.className = "metric";
+          item.innerHTML = `<span>${key}</span><strong>${formatValue(payload[key])}</strong>`;
+          metricsEl.appendChild(item);
+        }
+        rawEl.textContent = JSON.stringify(payload, null, 2);
+        summaryCard.hidden = false;
+        rawCard.hidden = false;
+        statusEl.textContent = "解析が完了しました。";
+      } catch (error) {
+        statusEl.textContent = error.message;
+      } finally {
+        analyzeButton.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: groovesim-api
+    runtime: python
+    buildCommand: pip install -e .
+    startCommand: uvicorn groovesim.webapp:app --host 0.0.0.0 --port $PORT
+    plan: free

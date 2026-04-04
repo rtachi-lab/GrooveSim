@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GrooveSim</title>
+  <style>
+    :root {
+      --bg: #f4f0e8;
+      --surface: rgba(255, 252, 246, 0.9);
+      --ink: #18181b;
+      --accent: #b65b3a;
+      --accent-2: #1d5b62;
+      --line: rgba(24, 24, 27, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: Georgia, "Times New Roman", serif;
+      background:
+        radial-gradient(circle at top left, rgba(182, 91, 58, 0.16), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(29, 91, 98, 0.16), transparent 26%),
+        linear-gradient(135deg, #f6f1e7, #e9e1d3);
+    }
+    main {
+      width: min(980px, calc(100vw - 32px));
+      margin: 32px auto;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: 0 24px 64px rgba(24, 24, 27, 0.12);
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(2.2rem, 5vw, 4rem);
+      line-height: 0.95;
+      letter-spacing: -0.03em;
+    }
+    p {
+      line-height: 1.6;
+      margin: 0;
+    }
+    .lede {
+      max-width: 66ch;
+      color: rgba(24, 24, 27, 0.78);
+      margin-bottom: 22px;
+    }
+    .stack {
+      display: grid;
+      gap: 18px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.72);
+      border-radius: 20px;
+      padding: 18px;
+    }
+    input[type="file"] {
+      width: 100%;
+      padding: 16px;
+      border-radius: 16px;
+      border: 1px dashed var(--accent-2);
+      background: rgba(29, 91, 98, 0.05);
+      margin: 12px 0;
+    }
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      padding: 14px 20px;
+      background: linear-gradient(135deg, var(--accent), #d8744e);
+      color: white;
+      font: inherit;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+    .status {
+      min-height: 22px;
+      margin-top: 10px;
+      color: rgba(24, 24, 27, 0.72);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.85);
+    }
+    .metric span {
+      display: block;
+      color: rgba(24, 24, 27, 0.7);
+      font-size: 0.95rem;
+    }
+    .metric strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 1.35rem;
+    }
+    pre {
+      margin: 0;
+      padding: 16px;
+      overflow: auto;
+      border-radius: 16px;
+      background: #18181b;
+      color: #fafafa;
+      font-size: 0.9rem;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>GrooveSim</h1>
+    <p class="lede">ブラウザから音声ファイルや MIDI を送って groove score を計算します。ファイルは API 側でリクエスト処理中にだけ扱い、永続保存しない前提です。</p>
+
+    <div class="stack">
+      <section class="card">
+        <p><code>site/config.js</code> の API URL を Render の URL に変えてから使ってください。</p>
+        <input id="file" type="file" accept=".wav,.mp3,.flac,.ogg,.m4a,.aif,.aiff,.mid,.midi">
+        <button id="analyze">Analyze</button>
+        <div id="status" class="status"></div>
+      </section>
+
+      <section class="card" id="summary" hidden>
+        <p id="summary-text"></p>
+        <div class="grid" id="metrics"></div>
+      </section>
+
+      <section class="card" id="raw-card" hidden>
+        <pre id="raw"></pre>
+      </section>
+    </div>
+  </main>
+
+  <script src="./config.js"></script>
+  <script>
+    const apiBase = (window.GROOVESIM_API_BASE || "").replace(/\/$/, "");
+    const fileInput = document.getElementById("file");
+    const analyzeButton = document.getElementById("analyze");
+    const statusEl = document.getElementById("status");
+    const summaryCard = document.getElementById("summary");
+    const rawCard = document.getElementById("raw-card");
+    const summaryText = document.getElementById("summary-text");
+    const metricsEl = document.getElementById("metrics");
+    const rawEl = document.getElementById("raw");
+
+    const metricKeys = [
+      "groove_score",
+      "tempo_bpm",
+      "beat_strength",
+      "beat_clarity",
+      "syncopation_index",
+      "mean_surprisal",
+      "moderate_surprisal_ratio",
+      "confidence"
+    ];
+
+    function formatValue(value) {
+      return typeof value === "number" ? value.toFixed(4) : String(value);
+    }
+
+    analyzeButton.addEventListener("click", async () => {
+      const file = fileInput.files[0];
+      if (!apiBase || apiBase.includes("YOUR-RENDER-SERVICE")) {
+        statusEl.textContent = "先に site/config.js の API URL を設定してください。";
+        return;
+      }
+      if (!file) {
+        statusEl.textContent = "ファイルを選んでください。";
+        return;
+      }
+
+      const body = new FormData();
+      body.append("file", file);
+
+      analyzeButton.disabled = true;
+      summaryCard.hidden = true;
+      rawCard.hidden = true;
+      statusEl.textContent = "解析中です。";
+
+      try {
+        const response = await fetch(`${apiBase}/api/analyze`, { method: "POST", body });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || "解析に失敗しました。");
+        }
+
+        summaryText.textContent = `${payload.filename} の解析結果です。`;
+        metricsEl.innerHTML = "";
+        for (const key of metricKeys) {
+          const item = document.createElement("div");
+          item.className = "metric";
+          item.innerHTML = `<span>${key}</span><strong>${formatValue(payload[key])}</strong>`;
+          metricsEl.appendChild(item);
+        }
+        rawEl.textContent = JSON.stringify(payload, null, 2);
+        summaryCard.hidden = false;
+        rawCard.hidden = false;
+        statusEl.textContent = "解析が完了しました。";
+      } catch (error) {
+        statusEl.textContent = error.message;
+      } finally {
+        analyzeButton.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
