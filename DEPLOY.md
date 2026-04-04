@@ -38,6 +38,9 @@ git push -u origin main
 3. Render should detect `render.yaml`
 4. Deploy
 
+This repository includes a `Dockerfile`, so Render can run the API with
+`ffmpeg` installed for audio decoding.
+
 Expected API URL example:
 
 - `https://groovesim-api.onrender.com`
@@ -104,4 +107,4 @@ Expected health response:
 
 - The app is designed to process uploads in memory during the request.
 - The application does not intentionally persist uploaded files to project storage.
-- Audio decoding requires `ffmpeg`, which is expected to be available in the Render environment. If not, add it via a custom Render setup or switch to a container deployment.
+- The Render deployment uses the included `Dockerfile`, which installs `ffmpeg`.

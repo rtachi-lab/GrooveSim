@@ -1,0 +1,9 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+external
+examples
+groove-v1.0.0-midionly
+tests

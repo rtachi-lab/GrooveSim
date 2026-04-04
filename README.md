@@ -89,6 +89,7 @@ This repository includes:
 
 - `site/`: static frontend for GitHub Pages
 - `render.yaml`: Render deployment config for the FastAPI API
+- `Dockerfile`: container image definition with `ffmpeg` included
 - `.github/workflows/pages.yml`: GitHub Pages deployment workflow
 
 Recommended deployment:
@@ -96,7 +97,7 @@ Recommended deployment:
 1. Create a repository under your GitHub account or organization, for example `rtachi-lab/GrooveSim`.
 2. Push this project to the repository.
 3. On Render, create a new Blueprint or Web Service from that repository.
-4. Deploy the API using `render.yaml`.
+4. Deploy the API using `render.yaml` and the included `Dockerfile`.
 5. Edit `site/config.js` and replace `https://YOUR-RENDER-SERVICE.onrender.com` with your actual Render API URL.
 6. Push again.
 7. In GitHub repository settings, enable GitHub Pages with GitHub Actions as the source.
@@ -110,6 +111,7 @@ Important:
 
 - uploaded files are not written to project storage by the app
 - audio files are decoded in memory via `ffmpeg`
+- Render installs `ffmpeg` through the included container build
 - if you use a repository name other than `GrooveSim`, your GitHub Pages path changes accordingly
 - detailed deployment steps are in `DEPLOY.md`
 
