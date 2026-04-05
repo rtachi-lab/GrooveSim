@@ -43,7 +43,7 @@ class PipelineSmokeTests(unittest.TestCase):
         self.assertGreater(result["tempo_bpm"], 0.0)
 
     def test_analyze_audio_bytes_with_tempo_prior(self) -> None:
-        result = analyze_audio_bytes(Path("examples/pulse_train.wav").read_bytes(), tempo_prior=(110.0, 120.0))
+        result = analyze_audio_bytes(Path("examples/pulse_train.wav").read_bytes(), tempo_prior=115.0)
         self.assertEqual(result["source"], "audio")
         self.assertGreaterEqual(result["tempo_bpm"], 110.0)
         self.assertLessEqual(result["tempo_bpm"], 120.0)
@@ -69,18 +69,17 @@ class PipelineSmokeTests(unittest.TestCase):
         irr = compute_idyom_like_surprisal(irregular, meter=irr_meter)
         self.assertLess(reg["mean_surprisal"], irr["mean_surprisal"])
 
-    def test_web_api_accepts_tempo_prior_form_fields(self) -> None:
+    def test_web_api_accepts_tempo_hint_form_field(self) -> None:
         client = TestClient(app)
         with Path("examples/pulse_train.wav").open("rb") as handle:
             response = client.post(
                 "/api/analyze",
                 files={"file": ("pulse_train.wav", handle, "audio/wav")},
-                data={"tempo_min": "110", "tempo_max": "120"},
+                data={"tempo_hint": "115"},
             )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["tempo_prior_min"], 110.0)
-        self.assertEqual(payload["tempo_prior_max"], 120.0)
+        self.assertEqual(payload["tempo_hint"], 115.0)
         self.assertGreaterEqual(payload["tempo_bpm"], 110.0)
         self.assertLessEqual(payload["tempo_bpm"], 120.0)
 

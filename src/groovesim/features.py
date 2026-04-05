@@ -63,12 +63,22 @@ def _tempo_preference_score(tempo_bpm: float) -> float:
     return _inverse_u(beat_hz, center=2.0, width=1.2)
 
 
-def _normalize_tempo_prior(tempo_prior: TempoPrior | tuple[float, float] | None) -> TempoPrior | None:
+def _tempo_hint_to_prior(tempo_hint: float) -> TempoPrior:
+    hint = float(tempo_hint)
+    if hint <= 0:
+        raise ValueError("Tempo hint must be positive.")
+    half_width = float(np.clip(hint * 0.12, 10.0, 24.0))
+    return TempoPrior(min_bpm=max(1.0, hint - half_width), max_bpm=hint + half_width)
+
+
+def _normalize_tempo_prior(tempo_prior: TempoPrior | tuple[float, float] | float | None) -> TempoPrior | None:
     if tempo_prior is None:
         return None
     if isinstance(tempo_prior, TempoPrior):
         min_bpm = float(tempo_prior.min_bpm)
         max_bpm = float(tempo_prior.max_bpm)
+    elif isinstance(tempo_prior, (int, float)):
+        return _tempo_hint_to_prior(float(tempo_prior))
     else:
         min_bpm = float(tempo_prior[0])
         max_bpm = float(tempo_prior[1])
@@ -165,7 +175,7 @@ def estimate_periodicity(
     hop_length: int,
     *,
     low_onset_env: np.ndarray | None = None,
-    tempo_prior: TempoPrior | tuple[float, float] | None = None,
+    tempo_prior: TempoPrior | tuple[float, float] | float | None = None,
 ) -> dict[str, float]:
     if onset_env.size < 8 or not np.any(onset_env > 0):
         return {
@@ -485,7 +495,7 @@ def quantize_audio_onsets_to_meter(binary_seq: np.ndarray, meter: MeterEstimate,
 
 def compute_audio_feature_set(
     audio: AudioFeatures,
-    tempo_prior: TempoPrior | tuple[float, float] | None = None,
+    tempo_prior: TempoPrior | tuple[float, float] | float | None = None,
 ) -> dict[str, float]:
     periodicity = estimate_periodicity(
         audio.onset_env,

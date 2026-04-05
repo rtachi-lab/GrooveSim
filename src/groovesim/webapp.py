@@ -51,12 +51,15 @@ def health() -> dict[str, str]:
 @app.post("/api/analyze")
 async def analyze(
     file: UploadFile = File(...),
+    tempo_hint: float | None = Form(default=None),
     tempo_min: float | None = Form(default=None),
     tempo_max: float | None = Form(default=None),
 ) -> dict[str, float | str]:
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in ALLOWED_AUDIO_EXTENSIONS | ALLOWED_MIDI_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Unsupported file type.")
+    if tempo_hint is not None and (tempo_min is not None or tempo_max is not None):
+        raise HTTPException(status_code=400, detail="Provide either tempo_hint or tempo_min/tempo_max, not both.")
     if (tempo_min is None) != (tempo_max is None):
         raise HTTPException(status_code=400, detail="tempo_min and tempo_max must be provided together.")
 
@@ -69,7 +72,12 @@ async def analyze(
         raise HTTPException(status_code=413, detail="Uploaded file is too large.")
 
     try:
-        tempo_prior = (float(tempo_min), float(tempo_max)) if tempo_min is not None and tempo_max is not None else None
+        if tempo_hint is not None:
+            tempo_prior = float(tempo_hint)
+        elif tempo_min is not None and tempo_max is not None:
+            tempo_prior = (float(tempo_min), float(tempo_max))
+        else:
+            tempo_prior = None
         if suffix in ALLOWED_MIDI_EXTENSIONS:
             result = analyze_midi_bytes(data, tempo_prior=tempo_prior)
         else:
@@ -79,6 +87,8 @@ async def analyze(
 
     result["filename"] = file.filename or "upload"
     result["stored_on_server"] = "no"
+    if tempo_hint is not None:
+        result["tempo_hint"] = float(tempo_hint)
     if tempo_min is not None and tempo_max is not None:
         result["tempo_prior_min"] = float(tempo_min)
         result["tempo_prior_max"] = float(tempo_max)

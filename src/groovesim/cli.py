@@ -8,13 +8,19 @@ from .pipeline import analyze_audio_file, analyze_midi_file, analyze_onset_file,
 
 
 def add_tempo_prior_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--tempo-min", dest="tempo_min", type=float, help="Optional lower bound for tempo estimation in BPM.")
-    parser.add_argument("--tempo-max", dest="tempo_max", type=float, help="Optional upper bound for tempo estimation in BPM.")
+    parser.add_argument("--tempo-hint", dest="tempo_hint", type=float, help="Optional approximate tempo hint in BPM.")
+    parser.add_argument("--tempo-min", dest="tempo_min", type=float, help=argparse.SUPPRESS)
+    parser.add_argument("--tempo-max", dest="tempo_max", type=float, help=argparse.SUPPRESS)
 
 
-def get_tempo_prior(args: argparse.Namespace) -> tuple[float, float] | None:
+def get_tempo_prior(args: argparse.Namespace) -> float | tuple[float, float] | None:
+    tempo_hint = getattr(args, "tempo_hint", None)
     tempo_min = getattr(args, "tempo_min", None)
     tempo_max = getattr(args, "tempo_max", None)
+    if tempo_hint is not None and (tempo_min is not None or tempo_max is not None):
+        raise SystemExit("Use either --tempo-hint or --tempo-min/--tempo-max, not both.")
+    if tempo_hint is not None:
+        return float(tempo_hint)
     if tempo_min is None and tempo_max is None:
         return None
     if tempo_min is None or tempo_max is None:

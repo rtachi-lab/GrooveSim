@@ -111,17 +111,17 @@
       color: #f8fafc;
       font-size: 0.92rem;
     }
-    .tempo-prior {
+    .tempo-hint {
       display: grid;
-      grid-template-columns: repeat(2, minmax(120px, 180px));
+      grid-template-columns: minmax(160px, 220px);
       gap: 12px;
     }
-    .tempo-prior label {
+    .tempo-hint label {
       display: grid;
       gap: 6px;
       font-size: 0.95rem;
     }
-    .tempo-prior input {
+    .tempo-hint input {
       padding: 10px 12px;
       border-radius: 12px;
       border: 1px solid var(--line);
@@ -138,14 +138,10 @@
     <section class="card upload">
       <label for="file">対応形式: WAV / MP3 / FLAC / OGG / M4A / AIFF / MID / MIDI</label>
       <input id="file" type="file" accept=".wav,.mp3,.flac,.ogg,.m4a,.aif,.aiff,.mid,.midi">
-      <div class="tempo-prior">
+      <div class="tempo-hint">
         <label>
-          tempo min
-          <input id="tempo-min" type="number" min="1" step="0.1" placeholder="optional">
-        </label>
-        <label>
-          tempo max
-          <input id="tempo-max" type="number" min="1" step="0.1" placeholder="optional">
+          tempo hint
+          <input id="tempo-hint" type="number" min="1" step="0.1" placeholder="optional">
         </label>
       </div>
       <button id="analyze">Analyze</button>
@@ -171,8 +167,7 @@
     const summaryText = document.getElementById("summary-text");
     const metricsEl = document.getElementById("metrics");
     const rawEl = document.getElementById("raw");
-    const tempoMinInput = document.getElementById("tempo-min");
-    const tempoMaxInput = document.getElementById("tempo-max");
+    const tempoHintInput = document.getElementById("tempo-hint");
 
     const metricKeys = [
       "groove_score",
@@ -191,22 +186,16 @@
 
     analyzeButton.addEventListener("click", async () => {
       const file = fileInput.files[0];
-      const tempoMin = tempoMinInput.value.trim();
-      const tempoMax = tempoMaxInput.value.trim();
+      const tempoHint = tempoHintInput.value.trim();
       if (!file) {
         statusEl.textContent = "ファイルを選んでください。";
-        return;
-      }
-      if ((tempoMin && !tempoMax) || (!tempoMin && tempoMax)) {
-        statusEl.textContent = "tempo min と tempo max は両方入力してください。";
         return;
       }
 
       const body = new FormData();
       body.append("file", file);
-      if (tempoMin && tempoMax) {
-        body.append("tempo_min", tempoMin);
-        body.append("tempo_max", tempoMax);
+      if (tempoHint) {
+        body.append("tempo_hint", tempoHint);
       }
 
       analyzeButton.disabled = true;

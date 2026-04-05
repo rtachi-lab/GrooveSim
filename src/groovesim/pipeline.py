@@ -10,21 +10,21 @@ from .scoring import combine_features
 from .symbolic import load_onset_times, onset_times_to_grid
 
 
-def analyze_audio_file(path: str, tempo_prior: TempoPrior | tuple[float, float] | None = None) -> dict[str, float | str]:
+def analyze_audio_file(path: str, tempo_prior: TempoPrior | tuple[float, float] | float | None = None) -> dict[str, float | str]:
     audio = extract_audio_features(path)
     feature_map = compute_audio_feature_set(audio, tempo_prior=tempo_prior)
     result = combine_features(feature_map, source="audio")
     return result.to_dict()
 
 
-def analyze_audio_bytes(data: bytes, tempo_prior: TempoPrior | tuple[float, float] | None = None) -> dict[str, float | str]:
+def analyze_audio_bytes(data: bytes, tempo_prior: TempoPrior | tuple[float, float] | float | None = None) -> dict[str, float | str]:
     audio = extract_audio_features_from_bytes(data)
     feature_map = compute_audio_feature_set(audio, tempo_prior=tempo_prior)
     result = combine_features(feature_map, source="audio")
     return result.to_dict()
 
 
-def analyze_midi_file(path: str, sr: int = 22050, tempo_prior: TempoPrior | tuple[float, float] | None = None) -> dict[str, float | str]:
+def analyze_midi_file(path: str, sr: int = 22050, tempo_prior: TempoPrior | tuple[float, float] | float | None = None) -> dict[str, float | str]:
     waveform, sr = render_midi_to_waveform(path, sr=sr)
     audio = extract_audio_features_from_array(waveform, sr=sr)
     feature_map = compute_audio_feature_set(audio, tempo_prior=tempo_prior)
@@ -40,7 +40,7 @@ def analyze_midi_file(path: str, sr: int = 22050, tempo_prior: TempoPrior | tupl
 def analyze_midi_bytes(
     data: bytes,
     sr: int = 22050,
-    tempo_prior: TempoPrior | tuple[float, float] | None = None,
+    tempo_prior: TempoPrior | tuple[float, float] | float | None = None,
 ) -> dict[str, float | str]:
     waveform, sr = render_midi_bytes_to_waveform(data, sr=sr)
     audio = extract_audio_features_from_array(waveform, sr=sr)
