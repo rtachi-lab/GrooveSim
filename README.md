@@ -17,6 +17,7 @@ The current implementation is a transparent feature-based MVP. It combines:
 - low-frequency drive
 
 Tempo estimation for audio now uses the Beat This! beat tracker as an additional robust beat-tracking backend, combined with the existing tempogram-based logic.
+On low-memory deployments such as Render Free, this backend can be disabled with `GROOVESIM_ENABLE_BEAT_THIS=0`.
 
 ## Install
 
@@ -98,6 +99,7 @@ Notes:
 - audio decoding uses `ffmpeg`, so `ffmpeg` must be available on the server
 - the browser UI also accepts an optional `tempo hint` input
 - on the first audio analysis run, Beat This! may download its pretrained checkpoint
+- set `GROOVESIM_ENABLE_BEAT_THIS=0` if you need a lower-memory server deployment
 
 ## GitHub Pages + Render
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from threading import Lock
 
 import numpy as np
@@ -8,7 +9,15 @@ _TRACKER = None
 _TRACKER_LOCK = Lock()
 
 
+def beat_this_enabled() -> bool:
+    raw = os.getenv("GROOVESIM_ENABLE_BEAT_THIS", "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
 def _get_tracker():
+    if not beat_this_enabled():
+        return None
+
     global _TRACKER
     if _TRACKER is not None:
         return _TRACKER

@@ -3,3 +3,6 @@ services:
     name: groovesim-api
     runtime: docker
     plan: free
+    envVars:
+      - key: GROOVESIM_ENABLE_BEAT_THIS
+        value: "0"
