@@ -16,6 +16,8 @@ The current implementation is a transparent feature-based MVP. It combines:
 - simple rhythm surprisal
 - low-frequency drive
 
+Tempo estimation for audio now uses the Beat This! beat tracker as an additional robust beat-tracking backend, combined with the existing tempogram-based logic.
+
 ## Install
 
 ```bash
@@ -95,6 +97,7 @@ Notes:
 - files are not saved on the server by the app
 - audio decoding uses `ffmpeg`, so `ffmpeg` must be available on the server
 - the browser UI also accepts an optional `tempo hint` input
+- on the first audio analysis run, Beat This! may download its pretrained checkpoint
 
 ## GitHub Pages + Render
 

@@ -6,6 +6,7 @@ import librosa
 import numpy as np
 
 from .audio import AudioFeatures
+from .beat_tracker import estimate_tempo_with_beat_this
 
 
 @dataclass
@@ -176,6 +177,7 @@ def estimate_periodicity(
     *,
     low_onset_env: np.ndarray | None = None,
     tempo_prior: TempoPrior | tuple[float, float] | float | None = None,
+    beat_this_result: dict[str, float] | None = None,
 ) -> dict[str, float]:
     if onset_env.size < 8 or not np.any(onset_env > 0):
         return {
@@ -207,12 +209,19 @@ def estimate_periodicity(
 
     valid_strengths = mean_tempogram[valid]
     valid_bpms = bpms[valid]
+    extra_candidates: list[tuple[float, float]] = []
+    if beat_this_result is not None:
+        beat_this_strength = float(np.max(valid_strengths)) * (0.85 + 0.15 * beat_this_result["confidence"])
+        extra_candidates.extend(_expand_tempo_hypotheses(beat_this_result["tempo_bpm"], beat_this_strength))
     tempo_bpm, peak_strength = _select_tempo_candidate(
         valid_bpms,
         valid_strengths,
         tempo_prior=normalized_prior,
-        extra_candidates=None,
+        extra_candidates=extra_candidates,
     )
+    if normalized_prior is None and beat_this_result is not None and beat_this_result["confidence"] >= 0.98:
+        tempo_bpm = float(beat_this_result["tempo_bpm"])
+        peak_strength = max(peak_strength, float(np.max(valid_strengths)) * beat_this_result["confidence"])
     median_strength = float(np.median(valid_strengths))
     clarity = peak_strength / (median_strength + 1e-6)
 
@@ -220,6 +229,8 @@ def estimate_periodicity(
     framewise_bpms = valid_bpms[framewise_peak_idx]
     tempo_std = float(np.std(framewise_bpms))
     periodicity_stability = float(np.clip(1.0 - tempo_std / 60.0, 0.0, 1.0))
+    if beat_this_result is not None:
+        periodicity_stability = float(np.clip(0.6 * periodicity_stability + 0.4 * beat_this_result["ibi_stability"], 0.0, 1.0))
 
     beat_strength = float(np.clip(peak_strength / (np.max(valid_strengths) + 1e-6), 0.0, 1.0))
     beat_clarity = float(np.clip((clarity - 1.0) / 3.0, 0.0, 1.0))
@@ -497,12 +508,17 @@ def compute_audio_feature_set(
     audio: AudioFeatures,
     tempo_prior: TempoPrior | tuple[float, float] | float | None = None,
 ) -> dict[str, float]:
+    try:
+        beat_this_result = estimate_tempo_with_beat_this(audio.y, audio.sr)
+    except Exception:
+        beat_this_result = None
     periodicity = estimate_periodicity(
         audio.onset_env,
         audio.sr,
         audio.hop_length,
         low_onset_env=audio.low_onset_env,
         tempo_prior=tempo_prior,
+        beat_this_result=beat_this_result,
     )
     event_density = compute_event_density_from_audio(audio.onset_env, audio.sr, audio.hop_length)
     binary_seq = build_binary_onset_sequence_from_audio(audio.onset_env, audio.sr, audio.hop_length)
