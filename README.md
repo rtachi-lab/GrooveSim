@@ -30,6 +30,12 @@ pip install -e .
 groovesim analyze-audio path/to/audio.wav --json-out result.json
 ```
 
+If you already know a plausible tempo range, you can constrain estimation:
+
+```bash
+groovesim analyze-audio path/to/audio.wav --tempo-min 100 --tempo-max 120
+```
+
 ### Onset input
 
 JSON:
@@ -63,6 +69,12 @@ groovesim analyze-onsets path/to/onsets.json
 groovesim analyze-midi path/to/pattern.mid --json-out result.json
 ```
 
+Tempo priors are also accepted for MIDI rendering + analysis:
+
+```bash
+groovesim analyze-midi path/to/pattern.mid --tempo-min 130 --tempo-max 180
+```
+
 If you also want the rendered audio file:
 
 ```bash
@@ -82,6 +94,7 @@ Notes:
 - uploaded files are processed in memory for the current request
 - files are not saved on the server by the app
 - audio decoding uses `ffmpeg`, so `ffmpeg` must be available on the server
+- the browser UI also accepts optional `tempo min` / `tempo max` inputs
 
 ## GitHub Pages + Render
 

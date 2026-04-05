@@ -43,6 +43,12 @@ class MeterEstimate:
     confidence: float
 
 
+@dataclass(frozen=True)
+class TempoPrior:
+    min_bpm: float
+    max_bpm: float
+
+
 def _sigmoid(x: float, center: float, slope: float) -> float:
     return float(1.0 / (1.0 + np.exp(-slope * (x - center))))
 
@@ -57,30 +63,94 @@ def _tempo_preference_score(tempo_bpm: float) -> float:
     return _inverse_u(beat_hz, center=2.0, width=1.2)
 
 
-def _select_tempo_candidate(valid_bpms: np.ndarray, valid_strengths: np.ndarray) -> tuple[float, float]:
+def _normalize_tempo_prior(tempo_prior: TempoPrior | tuple[float, float] | None) -> TempoPrior | None:
+    if tempo_prior is None:
+        return None
+    if isinstance(tempo_prior, TempoPrior):
+        min_bpm = float(tempo_prior.min_bpm)
+        max_bpm = float(tempo_prior.max_bpm)
+    else:
+        min_bpm = float(tempo_prior[0])
+        max_bpm = float(tempo_prior[1])
+    if min_bpm <= 0 or max_bpm <= 0:
+        raise ValueError("Tempo prior bounds must be positive.")
+    if min_bpm > max_bpm:
+        min_bpm, max_bpm = max_bpm, min_bpm
+    return TempoPrior(min_bpm=min_bpm, max_bpm=max_bpm)
+
+
+def _tempo_prior_score(tempo_bpm: float, tempo_prior: TempoPrior | None) -> float:
+    if tempo_prior is None:
+        return 1.0
+
+    if tempo_prior.min_bpm <= tempo_bpm <= tempo_prior.max_bpm:
+        span = max(tempo_prior.max_bpm - tempo_prior.min_bpm, 1.0)
+        center = 0.5 * (tempo_prior.min_bpm + tempo_prior.max_bpm)
+        closeness = 1.0 - abs(tempo_bpm - center) / (0.5 * span + 1e-6)
+        return 1.25 + 0.35 * float(np.clip(closeness, 0.0, 1.0))
+
+    if tempo_bpm < tempo_prior.min_bpm:
+        distance = tempo_prior.min_bpm - tempo_bpm
+    else:
+        distance = tempo_bpm - tempo_prior.max_bpm
+    return float(np.exp(-distance / 10.0))
+
+
+def _expand_tempo_hypotheses(base_bpm: float, base_strength: float) -> list[tuple[float, float]]:
+    ratios = (
+        (0.5, 0.92),
+        (2.0 / 3.0, 0.96),
+        (1.0, 1.0),
+        (1.5, 0.98),
+        (2.0, 0.90),
+    )
+    candidates: list[tuple[float, float]] = []
+    for ratio, ratio_weight in ratios:
+        bpm = base_bpm * ratio
+        if 40.0 <= bpm <= 220.0:
+            candidates.append((float(bpm), float(base_strength * ratio_weight)))
+    return candidates
+
+
+def _select_tempo_candidate(
+    valid_bpms: np.ndarray,
+    valid_strengths: np.ndarray,
+    *,
+    tempo_prior: TempoPrior | None = None,
+    extra_candidates: list[tuple[float, float]] | None = None,
+) -> tuple[float, float]:
     peak_idx = int(np.argmax(valid_strengths))
     peak_bpm = float(valid_bpms[peak_idx])
     peak_strength = float(valid_strengths[peak_idx])
+    max_strength = float(np.max(valid_strengths) + 1e-6)
 
     candidate_indices = np.argsort(valid_strengths)[::-1][:12]
-    best_bpm = peak_bpm
-    best_strength = peak_strength
-    best_score = (peak_strength / (np.max(valid_strengths) + 1e-6)) * (0.7 + 0.3 * _tempo_preference_score(peak_bpm))
+    candidate_pool: list[tuple[float, float]] = [(peak_bpm, peak_strength)]
+    if extra_candidates:
+        candidate_pool.extend(extra_candidates)
 
     for idx in candidate_indices:
         bpm = float(valid_bpms[idx])
         strength = float(valid_strengths[idx])
+        candidate_pool.extend(_expand_tempo_hypotheses(bpm, strength))
 
-        related = (
-            abs(bpm - peak_bpm / 2.0) <= 6.0
-            or abs(bpm - peak_bpm * 2.0) <= 12.0
-            or abs(bpm * 2.0 - peak_bpm) <= 6.0
-        )
-        if not related and strength < peak_strength * 0.92:
+    best_bpm = peak_bpm
+    best_strength = peak_strength
+    best_score = -np.inf
+    seen: set[float] = set()
+
+    for bpm, strength in candidate_pool:
+        rounded_bpm = round(float(bpm), 3)
+        if rounded_bpm in seen:
             continue
+        seen.add(rounded_bpm)
 
-        normalized_strength = strength / (np.max(valid_strengths) + 1e-6)
-        score = normalized_strength * (0.55 + 0.45 * _tempo_preference_score(bpm))
+        normalized_strength = float(strength / max_strength)
+        score = (
+            normalized_strength
+            * (0.45 + 0.55 * _tempo_preference_score(bpm))
+            * _tempo_prior_score(bpm, tempo_prior)
+        )
         if score > best_score:
             best_bpm = bpm
             best_strength = strength
@@ -89,7 +159,14 @@ def _select_tempo_candidate(valid_bpms: np.ndarray, valid_strengths: np.ndarray)
     return best_bpm, best_strength
 
 
-def estimate_periodicity(onset_env: np.ndarray, sr: int, hop_length: int) -> dict[str, float]:
+def estimate_periodicity(
+    onset_env: np.ndarray,
+    sr: int,
+    hop_length: int,
+    *,
+    low_onset_env: np.ndarray | None = None,
+    tempo_prior: TempoPrior | tuple[float, float] | None = None,
+) -> dict[str, float]:
     if onset_env.size < 8 or not np.any(onset_env > 0):
         return {
             "tempo_bpm": 0.0,
@@ -99,8 +176,14 @@ def estimate_periodicity(onset_env: np.ndarray, sr: int, hop_length: int) -> dic
             "tempo_alignment_score": 0.0,
         }
 
+    normalized_prior = _normalize_tempo_prior(tempo_prior)
+
     tempogram = librosa.feature.tempogram(onset_envelope=onset_env, sr=sr, hop_length=hop_length)
     mean_tempogram = tempogram.mean(axis=1)
+    if low_onset_env is not None and low_onset_env.size:
+        low_tempogram = librosa.feature.tempogram(onset_envelope=low_onset_env, sr=sr, hop_length=hop_length)
+        mean_low_tempogram = low_tempogram.mean(axis=1)
+        mean_tempogram = 0.6 * mean_tempogram + 0.4 * mean_low_tempogram
     bpms = librosa.tempo_frequencies(tempogram.shape[0], hop_length=hop_length, sr=sr)
     valid = np.isfinite(bpms) & (bpms >= 40.0) & (bpms <= 220.0)
     if not np.any(valid):
@@ -114,7 +197,12 @@ def estimate_periodicity(onset_env: np.ndarray, sr: int, hop_length: int) -> dic
 
     valid_strengths = mean_tempogram[valid]
     valid_bpms = bpms[valid]
-    tempo_bpm, peak_strength = _select_tempo_candidate(valid_bpms, valid_strengths)
+    tempo_bpm, peak_strength = _select_tempo_candidate(
+        valid_bpms,
+        valid_strengths,
+        tempo_prior=normalized_prior,
+        extra_candidates=None,
+    )
     median_strength = float(np.median(valid_strengths))
     clarity = peak_strength / (median_strength + 1e-6)
 
@@ -395,8 +483,17 @@ def quantize_audio_onsets_to_meter(binary_seq: np.ndarray, meter: MeterEstimate,
     return grid
 
 
-def compute_audio_feature_set(audio: AudioFeatures) -> dict[str, float]:
-    periodicity = estimate_periodicity(audio.onset_env, audio.sr, audio.hop_length)
+def compute_audio_feature_set(
+    audio: AudioFeatures,
+    tempo_prior: TempoPrior | tuple[float, float] | None = None,
+) -> dict[str, float]:
+    periodicity = estimate_periodicity(
+        audio.onset_env,
+        audio.sr,
+        audio.hop_length,
+        low_onset_env=audio.low_onset_env,
+        tempo_prior=tempo_prior,
+    )
     event_density = compute_event_density_from_audio(audio.onset_env, audio.sr, audio.hop_length)
     binary_seq = build_binary_onset_sequence_from_audio(audio.onset_env, audio.sr, audio.hop_length)
 

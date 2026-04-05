@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -49,10 +49,16 @@ def health() -> dict[str, str]:
 
 
 @app.post("/api/analyze")
-async def analyze(file: UploadFile = File(...)) -> dict[str, float | str]:
+async def analyze(
+    file: UploadFile = File(...),
+    tempo_min: float | None = Form(default=None),
+    tempo_max: float | None = Form(default=None),
+) -> dict[str, float | str]:
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in ALLOWED_AUDIO_EXTENSIONS | ALLOWED_MIDI_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Unsupported file type.")
+    if (tempo_min is None) != (tempo_max is None):
+        raise HTTPException(status_code=400, detail="tempo_min and tempo_max must be provided together.")
 
     data = await file.read()
     await file.close()
@@ -63,15 +69,19 @@ async def analyze(file: UploadFile = File(...)) -> dict[str, float | str]:
         raise HTTPException(status_code=413, detail="Uploaded file is too large.")
 
     try:
+        tempo_prior = (float(tempo_min), float(tempo_max)) if tempo_min is not None and tempo_max is not None else None
         if suffix in ALLOWED_MIDI_EXTENSIONS:
-            result = analyze_midi_bytes(data)
+            result = analyze_midi_bytes(data, tempo_prior=tempo_prior)
         else:
-            result = analyze_audio_bytes(data)
+            result = analyze_audio_bytes(data, tempo_prior=tempo_prior)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Analysis failed: {exc}") from exc
 
     result["filename"] = file.filename or "upload"
     result["stored_on_server"] = "no"
+    if tempo_min is not None and tempo_max is not None:
+        result["tempo_prior_min"] = float(tempo_min)
+        result["tempo_prior_max"] = float(tempo_max)
     return result
 
 
